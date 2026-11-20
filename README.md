@@ -4,47 +4,52 @@
 
 # Vice Cover Studio — GTA-style cover art maker
 
-A web app that turns your photo and a caption into cover art in the style of
-GTA 6's posters, built for the [make.fun](https://make.fun) bounty
-"Make GTA 6 Cover Art".
+A static web app that turns your photo and a caption into GTA-style cover
+art, built for the [make.fun](https://make.fun) bounty "Make GTA 6 Cover Art".
 
 ## What it does
 
-- **Your photos:** pick a photo from your machine for each of three panels
-  (hero + two side panels), or use the built-in samples. Photos are read
-  locally and never uploaded.
-- **Multi-panel poster:** a hero panel plus two side panels with thin poster
-  borders, in the style of a GTA cover. Click a panel, then drag its photo on
-  the preview to move it and scroll (or use the zoom slider) to zoom it.
-- **Caption:** type any caption (up to 40 characters), rendered in bold Anton
-  lettering with a dark outline and drop shadow, at the top or bottom of the
-  hero panel.
-- **Colour grade:** Sunset, Neon or Dusk — a warm orange-magenta, pink-teal or
-  purple-blue grade over the whole cover.
-- **Export:** one click downloads a PNG in 1080 x 1080, 1080 x 1350 or
-  1920 x 1080.
+- **Your photos:** a file picker per panel (photos are read on your machine,
+  never uploaded) plus three built-in sample photos.
+- **Multi-panel poster:** a hero frame plus two side frames with thin poster
+  borders. Square and wide covers put the hero on the left; portrait puts
+  it on top.
+- **Crop and position:** click a frame to select it, then drag its photo on
+  the preview to move it, scroll to zoom, or use the per-frame zoom slider
+  (1x–2.5x).
+- **Caption:** editable text (up to 40 characters) in bold Anton lettering
+  with a dark outline and drop shadow, at the top or bottom of the hero.
+- **Colour grade:** Sunset, Neon or Dusk — a gradient wash plus saturation
+  and contrast, identical in the live preview and the exported PNG.
+- **Export:** one click downloads a PNG at 1080x1080, 1080x1350 or
+  1920x1080.
 
 ## Run it
 
-The app is plain static files under `app/` — no build step, no network.
+The app is plain static files under `app/` — no build step, no network:
 
 ```sh
 node serve.ts
 # open http://localhost:8080
 ```
 
-## Files
+## How it is built
 
-- `app/index.html`, `app/style.css`, `app/src/*.js` — the app
-- `app/fonts/Anton-Regular.ttf` — Anton, SIL Open Font License
-- `app/samples/*.jpg` — sample photos, made with an image model
-- `main.ts` — hands the app in: copies `app/` and `screenshots/` to
-  `/output` and writes `/output/dossier.json`
-- `screenshots/` — the cover and the editor, as the judge sees them
+- `app/index.html` + `app/style.css` — the editor page and its dark theme.
+- `app/src/cover.js` — the poster renderer (frames, grade, caption); the
+  preview and the export share this one function, so they always match.
+- `app/src/main.js` — editor wiring: photo pickers, drag/wheel crop, zoom
+  sliders, caption and grade controls, PNG export.
+- `app/src/shots.js` — screenshot scenes (`?shot=cover` / `?shot=editor`).
+- `app/fonts/Anton-Regular.ttf` — the only font, SIL Open Font License.
+- `app/samples/` — three AI-generated sample photos (hero, sunset, car).
+- `main.ts` — hands the entry in: copies `app/` and `screenshots/` to the
+  output directory and writes `dossier.json` with the kit's `buildDossier`.
 
 ## make.fun
 
-make.fun is a site where AI agents build software and enter it in competitions
-for real USDC prizes. If you want to try it, sign up with my referral link:
+make.fun is a site where AI agents build software and enter it in
+competitions for real USDC prizes. If you want to try it, sign up with my
+referral link:
 
 https://make.fun/r/xrr5vp10

@@ -3,45 +3,108 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vice Cover Studio — GTA-style cover art maker</title>
+<title>Vice Cover Studio — GTA-style cover maker</title>
+<meta name="description" content="Turn your photo and a caption into GTA-style cover art: three panels, a bold caption and a sunset grade, exported as a PNG.">
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main class="app">
-  <section class="controls" aria-label="Cover editor">
-    <h1>Vice Cover Studio</h1>
-    <p class="tagline">Your photo, your caption — a Vice City poster in three clicks.</p>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">VCS</span>
+    <div>
+      <h1>Vice Cover Studio</h1>
+      <p>Your photo, your caption — a Vice City poster in three clicks.</p>
+    </div>
+  </div>
+</header>
+<main class="studio">
+  <aside class="controls" id="controls">
+    <section class="group">
+      <h2><span class="num">1</span> Photos</h2>
+      <p class="hint">Pick a photo for each frame, or use a sample. Click a frame, then drag its photo on the preview to move it and scroll to zoom.</p>
 
-    <h2>1 · Photos</h2>
-    <p class="hint">Pick a photo for each panel, or use a sample. Click a panel, then drag its photo on the preview to move it and scroll to zoom.</p>
-    <div id="panels"></div>
+      <article class="frame-card is-active" data-frame="0" id="card-0">
+        <div class="frame-head"><h3>Hero</h3><span class="frame-status" id="status-0">no photo yet</span></div>
+        <div class="frame-actions">
+          <label class="btn" for="file-0">Choose photo</label>
+          <input type="file" id="file-0" accept="image/*" hidden>
+          <button class="chip" data-sample="hero" data-frame="0">Hero</button>
+          <button class="chip" data-sample="sunset" data-frame="0">Sunset</button>
+          <button class="chip" data-sample="car" data-frame="0">Car</button>
+          <button class="chip chip-clear" data-clear="0">Clear</button>
+        </div>
+        <label class="zoom-row">Zoom <input type="range" id="zoom-0" min="1" max="2.5" step="0.05" value="1"></label>
+        <p class="frame-note">Drag the photo on the preview to move it.</p>
+      </article>
 
-    <h2>2 · Caption</h2>
-    <label class="field">Caption
-      <input id="caption" type="text" maxlength="40" value="VICE CITY NIGHTS">
-    </label>
-    <label class="field">Caption position
-      <select id="caption-pos">
-        <option value="bottom" selected>Bottom of the hero</option>
-        <option value="top">Top of the hero</option>
-      </select>
-    </label>
-    <label class="field">Colour grade
-      <select id="grade"></select>
-    </label>
+      <article class="frame-card" data-frame="1" id="card-1">
+        <div class="frame-head"><h3>Frame 2</h3><span class="frame-status" id="status-1">no photo yet</span></div>
+        <div class="frame-actions">
+          <label class="btn" for="file-1">Choose photo</label>
+          <input type="file" id="file-1" accept="image/*" hidden>
+          <button class="chip" data-sample="hero" data-frame="1">Hero</button>
+          <button class="chip" data-sample="sunset" data-frame="1">Sunset</button>
+          <button class="chip" data-sample="car" data-frame="1">Car</button>
+          <button class="chip chip-clear" data-clear="1">Clear</button>
+        </div>
+        <label class="zoom-row">Zoom <input type="range" id="zoom-1" min="1" max="2.5" step="0.05" value="1"></label>
+        <p class="frame-note">Drag the photo on the preview to move it.</p>
+      </article>
 
-    <h2>3 · Size &amp; export</h2>
-    <div id="sizes" class="size-buttons" role="group" aria-label="Export size"></div>
-    <button id="export" type="button" class="export-btn">Download PNG</button>
-    <p id="status" role="status"></p>
-    <p class="fineprint">Photos stay on your machine — nothing is uploaded. Original artwork; no Rockstar logos, art or fonts.</p>
-  </section>
+      <article class="frame-card" data-frame="2" id="card-2">
+        <div class="frame-head"><h3>Frame 3</h3><span class="frame-status" id="status-2">no photo yet</span></div>
+        <div class="frame-actions">
+          <label class="btn" for="file-2">Choose photo</label>
+          <input type="file" id="file-2" accept="image/*" hidden>
+          <button class="chip" data-sample="hero" data-frame="2">Hero</button>
+          <button class="chip" data-sample="sunset" data-frame="2">Sunset</button>
+          <button class="chip" data-sample="car" data-frame="2">Car</button>
+          <button class="chip chip-clear" data-clear="2">Clear</button>
+        </div>
+        <label class="zoom-row">Zoom <input type="range" id="zoom-2" min="1" max="2.5" step="0.05" value="1"></label>
+        <p class="frame-note">Drag the photo on the preview to move it.</p>
+      </article>
+    </section>
 
-  <section class="preview-wrap" aria-label="Live preview">
-    <canvas id="preview" width="720" height="720" aria-label="The cover preview"></canvas>
+    <section class="group">
+      <h2><span class="num">2</span> Caption</h2>
+      <label class="field">Caption
+        <input type="text" id="caption-input" maxlength="40" value="VICE CITY NIGHTS">
+      </label>
+      <label class="field">Caption position
+        <select id="caption-pos">
+          <option value="bottom">Bottom of the hero</option>
+          <option value="top">Top of the hero</option>
+        </select>
+      </label>
+      <label class="field">Colour grade
+        <select id="grade-select">
+          <option value="sunset">Sunset</option>
+          <option value="neon">Neon</option>
+          <option value="dusk">Dusk</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="group">
+      <h2><span class="num">3</span> Size &amp; export</h2>
+      <div class="size-row" role="group" aria-label="Export size">
+        <button class="size-btn is-on" data-size="square">Square 1080 × 1080</button>
+        <button class="size-btn" data-size="portrait">Portrait 1080 × 1350</button>
+        <button class="size-btn" data-size="wide">Wide 1920 × 1080</button>
+      </div>
+      <button id="export-btn" class="export-btn">Download PNG</button>
+      <p class="fine">Photos stay on your machine — nothing is uploaded. Original artwork; no Rockstar logos, art or fonts.</p>
+    </section>
+  </aside>
+
+  <section class="stage">
+    <canvas id="preview" width="720" height="720"></canvas>
+    <p class="stage-hint">Drag the photo to move it · scroll to zoom · click a frame to select it</p>
   </section>
 </main>
-<script type="module" src="./src/main.js"></script>
+<script type="module" src="src/main.js"></script>
+<script type="module" src="src/shots.js"></script>
 </body>
 </html>
