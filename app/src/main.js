@@ -1,248 +1,204 @@
-// main.js — wires the Vice Cover Studio editor.
-//
-// The editor keeps one poster state and repaints the preview canvas on
-// every change. Photos are read on the user's own machine (FileReader or
-// the built-in samples) and never uploaded anywhere.
+// Vice Cover Studio — editor wiring (ES module).
+// One poster state, a live canvas preview, per-frame photo pickers,
+// drag-to-pan / wheel-zoom / zoom sliders, caption + grade + size,
+// and PNG export at the three poster sizes.
 
-import { SIZES, renderCover, frameAt } from './cover.js';
+import { SIZES, GRADES, renderPoster, posterCanvas } from './cover.js';
 
-const SAMPLES = {
-  hero: 'samples/hero.jpg',
-  sunset: 'samples/sunset.jpg',
-  car: 'samples/car.jpg',
-};
+const SAMPLES = [
+  { file: 'samples/hero.jpg', label: 'Neon street' },
+  { file: 'samples/sunset.jpg', label: 'City sunset' },
+  { file: 'samples/car.jpg', label: 'Sports car' },
+];
 
-const FRAME_TITLES = ['Hero', 'Frame 2', 'Frame 3'];
+const FRAME_NAMES = ['Hero photo', 'Second photo', 'Third photo'];
 
-// Poster state: one entry per frame, plus the caption, grade and size.
+// The poster the editor works on.
 const poster = {
   size: 'square',
   grade: 'sunset',
   caption: 'VICE CITY NIGHTS',
-  captionAt: 'bottom',
-  active: 0,
-  frames: [
-    { img: null, src: '', zoom: 1, dx: 0, dy: 0 },
-    { img: null, src: '', zoom: 1, dx: 0, dy: 0 },
-    { img: null, src: '', zoom: 1, dx: 0, dy: 0 },
-  ],
+  captionPos: 'bottom',
+  frames: FRAME_NAMES.map(() => ({ img: null, zoom: 1, panX: 0, panY: 0 })),
 };
 
-const preview = document.getElementById('preview');
-const imageCache = new Map();
-let paintQueued = false;
+let active = 0; // which frame the canvas gestures act on
+let repaintQueued = false;
 
-// Load an image (cached by source) and resolve with the element.
-function fetchImage(src) {
-  if (imageCache.has(src)) return imageCache.get(src);
-  const done = new Promise((resolve, reject) => {
-    const el = new Image();
-    el.onload = () => resolve(el);
-    el.onerror = () => reject(new Error('could not load ' + src));
-    el.src = src;
-  });
-  imageCache.set(src, done);
-  return done;
+const stage = document.getElementById('stage');
+const stageCtx = stage.getContext('2d');
+const statusLine = document.getElementById('status');
+
+function frameLabel(i) {
+  const f = poster.frames[i];
+  return f.img ? `${FRAME_NAMES[i]} · photo loaded` : `${FRAME_NAMES[i]} · empty`;
 }
 
-// Repaint the preview canvas from the current poster state.
-// The preview is drawn at a modest size; export reuses renderCover at
-// full size, so what you see is what you download.
+function refreshStatus() {
+  statusLine.textContent = poster.frames.map((_, i) => frameLabel(i)).join('  ·  ');
+}
+
 function repaint() {
-  const dims = SIZES[poster.size];
-  const shortSide = 720;
-  const scale = shortSide / Math.max(dims.w, dims.h);
-  preview.width = Math.round(dims.w * scale);
-  preview.height = Math.round(dims.h * scale);
-  renderCover(preview, poster);
-  syncCards();
-}
-
-function queueRepaint() {
-  if (paintQueued) return;
-  paintQueued = true;
+  if (repaintQueued) return;
+  repaintQueued = true;
   requestAnimationFrame(() => {
-    paintQueued = false;
-    repaint();
+    repaintQueued = false;
+    const dims = SIZES[poster.size];
+    const scale = Math.min(760 / dims.w, 560 / dims.h);
+    stage.width = Math.round(dims.w * scale);
+    stage.height = Math.round(dims.h * scale);
+    renderPoster(stageCtx, poster, stage.width, stage.height);
   });
 }
 
-// Keep each frame card's status line, zoom slider and highlight in sync.
-function syncCards() {
-  poster.frames.forEach((frame, i) => {
-    const status = document.getElementById(`status-${i}`);
-    if (status) status.textContent = frame.img ? 'photo loaded' : 'no photo yet';
-    const zoom = document.getElementById(`zoom-${i}`);
-    if (zoom && Number(zoom.value) !== frame.zoom) zoom.value = String(frame.zoom);
-    const card = document.getElementById(`card-${i}`);
-    if (card) card.classList.toggle('is-active', poster.active === i);
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
   });
 }
 
-function selectFrame(i) {
-  poster.active = i;
-  syncCards();
+function setFramePhoto(i, img) {
+  poster.frames[i] = { img, zoom: 1, panX: 0, panY: 0 };
+  const slider = document.querySelector(`[data-zoom="${i}"]`);
+  if (slider) slider.value = '1';
+  refreshStatus();
+  repaint();
 }
 
-// Put a photo (by URL or data URL) into frame i and repaint.
-async function setPhoto(i, src) {
-  try {
-    const img = await fetchImage(src);
-    const frame = poster.frames[i];
-    frame.img = img;
-    frame.src = src;
-    frame.zoom = 1;
-    frame.dx = 0;
-    frame.dy = 0;
-    selectFrame(i);
-    queueRepaint();
-  } catch {
-    const status = document.getElementById(`status-${i}`);
-    if (status) status.textContent = 'could not load photo';
-  }
-}
-
-function clearPhoto(i) {
-  const frame = poster.frames[i];
-  frame.img = null;
-  frame.src = '';
-  frame.zoom = 1;
-  frame.dx = 0;
-  frame.dy = 0;
-  queueRepaint();
-}
-
-// Convert a pointer position on the preview into poster coordinates.
-function posterPoint(event) {
-  const box = preview.getBoundingClientRect();
-  return {
-    x: (event.clientX - box.left) * (preview.width / box.width),
-    y: (event.clientY - box.top) * (preview.height / box.height),
-  };
-}
-
-// Drag pans the active frame's photo; the wheel zooms it.
-let dragging = null;
-preview.addEventListener('pointerdown', (event) => {
-  const p = posterPoint(event);
-  const hit = frameAt(p.x, p.y, preview.width, preview.height);
-  selectFrame(hit);
-  dragging = { x: p.x, y: p.y, frame: poster.frames[hit] };
-  preview.setPointerCapture(event.pointerId);
-});
-preview.addEventListener('pointermove', (event) => {
-  if (!dragging) return;
-  const p = posterPoint(event);
-  const dims = SIZES[poster.size];
-  const frame = dragging.frame;
-  // A drag across the whole frame sweeps the pan from -1 to 1.
-  frame.dx = clamp(frame.dx + ((p.x - dragging.x) / preview.width) * 2, -1, 1);
-  frame.dy = clamp(frame.dy + ((p.y - dragging.y) / preview.height) * 2, -1, 1);
-  dragging.x = p.x;
-  dragging.y = p.y;
-  queueRepaint();
-});
-preview.addEventListener('pointerup', () => { dragging = null; });
-preview.addEventListener('pointercancel', () => { dragging = null; });
-preview.addEventListener('wheel', (event) => {
-  event.preventDefault();
-  const frame = poster.frames[poster.active];
-  frame.zoom = clamp(frame.zoom * Math.exp(-event.deltaY * 0.0012), 1, 2.5);
-  queueRepaint();
-}, { passive: false });
-
-function clamp(v, lo, hi) {
-  return Math.min(hi, Math.max(lo, v));
-}
-
-// Wire the three frame cards: file picker, sample buttons, clear, zoom.
-poster.frames.forEach((frame, i) => {
-  const fileInput = document.getElementById(`file-${i}`);
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files && fileInput.files[0];
+function wireFrameCard(i) {
+  const card = document.querySelector(`[data-frame="${i}"]`);
+  const picker = card.querySelector('input[type="file"]');
+  picker.addEventListener('change', () => {
+    const file = picker.files && picker.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setPhoto(i, String(reader.result));
+    reader.onload = async () => {
+      try {
+        setFramePhoto(i, await loadImage(reader.result));
+      } catch {
+        statusLine.textContent = 'That file could not be read as a photo.';
+      }
+    };
     reader.readAsDataURL(file);
-    fileInput.value = '';
   });
-  document.querySelectorAll(`[data-sample][data-frame="${i}"]`).forEach((btn) => {
-    btn.addEventListener('click', () => setPhoto(i, SAMPLES[btn.dataset.sample]));
-  });
-  const clearBtn = document.querySelector(`[data-clear="${i}"]`);
-  if (clearBtn) clearBtn.addEventListener('click', () => clearPhoto(i));
-  const zoom = document.getElementById(`zoom-${i}`);
-  zoom.addEventListener('input', () => {
-    frame.zoom = Number(zoom.value);
-    queueRepaint();
-  });
-  const card = document.getElementById(`card-${i}`);
-  card.addEventListener('click', (event) => {
-    if (event.target.closest('button, label, input, select')) return;
-    selectFrame(i);
-  });
-});
-
-// Caption text, position and grade.
-const captionInput = document.getElementById('caption-input');
-captionInput.addEventListener('input', () => {
-  poster.caption = captionInput.value;
-  queueRepaint();
-});
-document.getElementById('caption-pos').addEventListener('change', (event) => {
-  poster.captionAt = event.target.value;
-  queueRepaint();
-});
-document.getElementById('grade-select').addEventListener('change', (event) => {
-  poster.grade = event.target.value;
-  queueRepaint();
-});
-
-// Size buttons.
-document.querySelectorAll('[data-size]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    poster.size = btn.dataset.size;
-    document.querySelectorAll('[data-size]').forEach((b) => {
-      b.classList.toggle('is-on', b === btn);
+  card.querySelectorAll('[data-sample]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        setFramePhoto(i, await loadImage(btn.dataset.sample));
+      } catch {
+        statusLine.textContent = 'Sample photo failed to load.';
+      }
     });
-    queueRepaint();
   });
-});
+  const slider = card.querySelector(`[data-zoom="${i}"]`);
+  slider.addEventListener('input', () => {
+    poster.frames[i].zoom = parseFloat(slider.value);
+    repaint();
+  });
+  card.addEventListener('click', () => {
+    active = i;
+    document.querySelectorAll('.frame-card').forEach((el) => el.classList.remove('active'));
+    card.classList.add('active');
+  });
+}
 
-// Export: render at full size and download the PNG.
-document.getElementById('export-btn').addEventListener('click', () => {
-  const dims = SIZES[poster.size];
-  const out = document.createElement('canvas');
-  renderCover(out, poster);
-  out.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `vice-cover-${dims.w}x${dims.h}.png`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  }, 'image/png');
-});
+// Canvas gestures: drag pans the active frame, wheel zooms it.
+function canvasPoint(ev) {
+  const r = stage.getBoundingClientRect();
+  return { x: (ev.clientX - r.left) / r.width, y: (ev.clientY - r.top) / r.height };
+}
 
-// Make sure the Anton caption font is ready before the first paint,
-// then load the three samples into their frames.
-async function boot() {
-  try {
-    await document.fonts.load('80px Anton');
-    await document.fonts.ready;
-  } catch {
-    // Fall back to the system sans if the font cannot load; the poster
-    // still renders, just without the condensed lettering.
-  }
-  await Promise.all([
-    setPhoto(0, SAMPLES.hero),
-    setPhoto(1, SAMPLES.sunset),
-    setPhoto(2, SAMPLES.car),
-  ]);
-  poster.active = 0;
+let dragging = null;
+stage.addEventListener('pointerdown', (ev) => {
+  dragging = canvasPoint(ev);
+  stage.setPointerCapture(ev.pointerId);
+});
+stage.addEventListener('pointermove', (ev) => {
+  if (!dragging) return;
+  const p = canvasPoint(ev);
+  const f = poster.frames[active];
+  f.panX = Math.max(-1, Math.min(1, f.panX + (p.x - dragging.x) * 2));
+  f.panY = Math.max(-1, Math.min(1, f.panY + (p.y - dragging.y) * 2));
+  dragging = p;
   repaint();
-  window.__editorReady = true;
+});
+stage.addEventListener('pointerup', () => { dragging = null; });
+stage.addEventListener('wheel', (ev) => {
+  ev.preventDefault();
+  const f = poster.frames[active];
+  f.zoom = Math.max(1, Math.min(2.5, f.zoom * (ev.deltaY < 0 ? 1.08 : 0.92)));
+  const slider = document.querySelector(`[data-zoom="${active}"]`);
+  if (slider) slider.value = String(f.zoom);
+  repaint();
+}, { passive: false });
+
+function wireControls() {
+  const captionInput = document.getElementById('caption');
+  captionInput.addEventListener('input', () => {
+    poster.caption = captionInput.value;
+    repaint();
+  });
+  document.querySelectorAll('[data-pos]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      poster.captionPos = btn.dataset.pos;
+      document.querySelectorAll('[data-pos]').forEach((b) => b.classList.toggle('on', b === btn));
+      repaint();
+    });
+  });
+  document.querySelectorAll('[data-grade]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      poster.grade = btn.dataset.grade;
+      document.querySelectorAll('[data-grade]').forEach((b) => b.classList.toggle('on', b === btn));
+      repaint();
+    });
+  });
+  document.querySelectorAll('[data-size]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      poster.size = btn.dataset.size;
+      document.querySelectorAll('[data-size]').forEach((b) => b.classList.toggle('on', b === btn));
+      repaint();
+    });
+  });
+}
+
+function wireExports() {
+  document.querySelectorAll('[data-export]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const dims = SIZES[btn.dataset.export];
+      const canvas = posterCanvas(poster, dims.w, dims.h);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `vice-cover-${btn.dataset.export}-${dims.w}x${dims.h}.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        statusLine.textContent = `Exported ${dims.w} × ${dims.h} PNG.`;
+      }, 'image/png');
+    });
+  });
+}
+
+async function boot() {
+  // In ?shot=cover mode the shot module owns the canvas; the editor
+  // must not boot and repaint over it.
+  if (window.__coverShot) return;
+  wireControls();
+  wireExports();
+  for (let i = 0; i < 3; i++) wireFrameCard(i);
+  document.querySelector('.frame-card').classList.add('active');
+  // Start with the hero sample in the hero frame so the poster is alive.
+  try {
+    poster.frames[0].img = await loadImage(SAMPLES[0].file);
+  } catch {
+    statusLine.textContent = 'Sample photo failed to load.';
+  }
+  await document.fonts.load('64px Anton').catch(() => {});
+  refreshStatus();
+  repaint();
 }
 
 boot();
